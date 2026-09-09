@@ -42,7 +42,7 @@ Maze.prototype.canExit = function (y, x, dir) {
 
 Maze.prototype.openPair = function (y, x, dir) {
   const ny = y + DIR_Y[dir];
-  const nx = x + DIR_X[d];
+  const nx = x + DIR_X[dir];
   if (!this.inBounds(ny, nx)) return false;
   this.cells[y][x].set(dir, 1);
   this.cells[ny][nx].set(DIR_OPP[dir], 1);
