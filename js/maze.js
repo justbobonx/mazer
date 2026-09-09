@@ -1,267 +1,226 @@
-/** Maze grid + stepped generator. Walls and openings are both cells. */
+/**
+ * Maze.cells[y][x] is a Cell.
+ * [0][0] is upper left. right -> [y][x+1], down -> [y+1][x].
+ * Opening a side always opens the opposite side on the neighbor.
+ */
 
-const WALL = 0;
-const OPEN = 1;
-
-const DIRS = [
-  { dx: 0, dy: -2, name: "N" },
-  { dx: 2, dy: 0, name: "E" },
-  { dx: 0, dy: 2, name: "S" },
-  { dx: -2, dy: 0, name: "W" },
-];
-
-function oddNearCenter(n) {
-  let m = Math.floor(n / 2);
-  if (m % 2 === 0) m -= 1;
-  return m;
-}
-
-function inBounds(x, y, cols, rows) {
-  return x >= 0 && y >= 0 && x < cols && y < rows;
-}
-
-function isPassageCell(x, y, cols, rows) {
-  return x % 2 === 1 && y % 2 === 1 && x > 0 && y > 0 && x < cols - 1 && y < rows - 1;
-}
-
-function createMaze(cols, rows) {
-  if (cols % 2 === 0 || rows % 2 === 0) {
-    throw new Error("cols and rows must be odd so the border stays wall and passages sit on odd cells");
-  }
-  const grid = [];
+function Maze(rows, cols) {
+  this.rows = rows;
+  this.cols = cols;
+  this.cells = [];
   for (let y = 0; y < rows; y++) {
-    const row = new Array(cols);
-    for (let x = 0; x < cols; x++) row[x] = WALL;
-    grid.push(row);
+    const row = [];
+    for (let x = 0; x < cols; x++) row.push(new Cell());
+    this.cells.push(row);
   }
-  const start = { x: oddNearCenter(cols), y: rows - 2 };
-  const goal = { x: oddNearCenter(cols), y: 1 };
-  return { cols, rows, grid, start, goal };
+  this.start = { y: rows - 1, x: Math.floor(cols / 2) };
+  this.goal = { y: 0, x: Math.floor(cols / 2) };
+  this.heads = [];
+  this.visited = [];
+  this.leftovers = [];
+  this.phase = "idle";
+  this.lastCarved = { y: this.start.y, x: this.start.x };
+  this.reachedGoal = false;
+  this.steps = 0;
 }
 
-function createGenerator(maze, opts = {}) {
-  const branchChance = opts.branchChance ?? 0.2;
-  const keepDirChance = opts.keepDirChance ?? 0.72;
-  const goalBias = opts.goalBias ?? 0.28;
+Maze.prototype.inBounds = function (y, x) {
+  return y >= 0 && x >= 0 && y < this.rows && x < this.cols;
+};
 
-  const { cols, rows, grid, start, goal } = maze;
-  grid[start.y][start.x] = OPEN;
-  grid[goal.y][goal.x] = OPEN;
+Maze.prototype.cell = function (y, x) {
+  return this.cells[y][x];
+};
 
-  const heads = [{ x: start.x, y: start.y, dir: null }];
-  let reachedGoal = start.x === goal.x && start.y === goal.y;
-  let phase = "grow";
-  let leftovers = [];
-  let lastCarved = { x: start.x, y: start.y };
-  let steps = 0;
+Maze.prototype.canExit = function (y, x, dir) {
+  if (!this.inBounds(y, x)) return false;
+  if (!this.cells[y][x].open(dir)) return false;
+  const ny = y + DIR_Y[dir];
+  const nx = x + DIR_X[dir];
+  return this.inBounds(ny, nx);
+};
 
-  function neighborsFrom(x, y, onlyWallPassages) {
-    const out = [];
-    for (const d of DIRS) {
-      const nx = x + d.dx;
-      const ny = y + d.dy;
-      if (!isPassageCell(nx, ny, cols, rows)) continue;
-      if (onlyWallPassages && grid[ny][nx] === OPEN && !(nx === goal.x && ny === goal.y)) continue;
-      if (onlyWallPassages && grid[ny][nx] === OPEN && nx === goal.x && ny === goal.y) {
-        out.push({ x: nx, y: ny, dir: d.name, midX: x + d.dx / 2, midY: y + d.dy / 2, isGoal: true });
-        continue;
-      }
-      if (onlyWallPassages && grid[ny][nx] !== WALL) continue;
-      out.push({
-        x: nx,
-        y: ny,
-        dir: d.name,
-        midX: x + d.dx / 2,
-        midY: y + d.dy / 2,
-        isGoal: nx === goal.x && ny === goal.y,
-      });
-    }
-    return out;
+Maze.prototype.openPair = function (y, x, dir) {
+  const ny = y + DIR_Y[dir];
+  const nx = x + DIR_X[dir];
+  if (!this.inBounds(ny, nx)) return false;
+  this.cells[y][x].set(dir, 1);
+  this.cells[ny][nx].set(DIR_OPP[dir], 1);
+  this.lastCarved = { y: ny, x: nx };
+  return true;
+};
+
+Maze.prototype._key = function (y, x) {
+  return y + "," + x;
+};
+
+Maze.prototype._markVisited = function (y, x) {
+  this.visited[this._key(y, x)] = true;
+};
+
+Maze.prototype._isVisited = function (y, x) {
+  return !!this.visited[this._key(y, x)];
+};
+
+Maze.prototype._unusedNeighbors = function (y, x) {
+  const out = [];
+  for (let d = 0; d < 4; d++) {
+    const ny = y + DIR_Y[d];
+    const nx = x + DIR_X[d];
+    if (!this.inBounds(ny, nx)) continue;
+    if (this._isVisited(ny, nx)) continue;
+    out.push(d);
   }
+  return out;
+};
 
-  function carveTo(fromX, fromY, n) {
-    grid[n.midY][n.midX] = OPEN;
-    grid[n.y][n.x] = OPEN;
-    lastCarved = { x: n.x, y: n.y };
-    if (n.isGoal) reachedGoal = true;
+Maze.prototype.beginGenerate = function (opts) {
+  opts = opts || {};
+  this.branchChance = opts.branchChance ?? 0.2;
+  this.keepDirChance = opts.keepDirChance ?? 0.74;
+  this.goalBias = opts.goalBias ?? 0.3;
+  this.visited = Object.create(null);
+  this.leftovers = [];
+  this.reachedGoal = this.start.y === this.goal.y && this.start.x === this.goal.x;
+  this._markVisited(this.start.y, this.start.x);
+  this._markVisited(this.goal.y, this.goal.x);
+  this.heads = [{ y: this.start.y, x: this.start.x, dir: -1 }];
+  this.phase = "grow";
+  this.lastCarved = { y: this.start.y, x: this.start.x };
+  this.steps = 0;
+};
+
+Maze.prototype._pickDir = function (head, options) {
+  if (!options.length) return -1;
+  if (head.dir >= 0 && options.indexOf(head.dir) >= 0 && Math.random() < this.keepDirChance) {
+    return head.dir;
   }
-
-  function pickNeighbor(head, options) {
-    if (!options.length) return null;
-    const keep = options.filter((o) => o.dir === head.dir);
-    if (head.dir && keep.length && Math.random() < keepDirChance) {
-      return keep[Math.floor(Math.random() * keep.length)];
-    }
-    if (!reachedGoal && Math.random() < goalBias) {
-      const closer = options.filter((o) => {
-        const now = Math.abs(head.x - goal.x) + Math.abs(head.y - goal.y);
-        const nxt = Math.abs(o.x - goal.x) + Math.abs(o.y - goal.y);
-        return nxt < now;
-      });
-      if (closer.length) return closer[Math.floor(Math.random() * closer.length)];
-    }
-    return options[Math.floor(Math.random() * options.length)];
+  if (!this.reachedGoal && Math.random() < this.goalBias) {
+    const closer = options.filter((d) => {
+      const ny = head.y + DIR_Y[d];
+      const nx = head.x + DIR_X[d];
+      const now = Math.abs(head.y - this.goal.y) + Math.abs(head.x - this.goal.x);
+      const nxt = Math.abs(ny - this.goal.y) + Math.abs(nx - this.goal.x);
+      return nxt < now;
+    });
+    if (closer.length) return closer[Math.floor(Math.random() * closer.length)];
   }
+  return options[Math.floor(Math.random() * options.length)];
+};
 
-  function spawnHeadFromExisting() {
-    const candidates = [];
-    for (let y = 1; y < rows; y += 2) {
-      for (let x = 1; x < cols; x += 2) {
-        if (grid[y][x] !== OPEN) continue;
-        const opts = neighborsFrom(x, y, true);
-        if (opts.length) candidates.push({ x, y });
-      }
-    }
-    if (!candidates.length) return false;
-    const c = candidates[Math.floor(Math.random() * candidates.length)];
-    heads.push({ x: c.x, y: c.y, dir: null });
-    return true;
-  }
-
-  function collectLeftovers() {
-    leftovers = [];
-    for (let y = 1; y < rows; y += 2) {
-      for (let x = 1; x < cols; x += 2) {
-        if (grid[y][x] === WALL) leftovers.push({ x, y });
-      }
-    }
-    for (let i = leftovers.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const t = leftovers[i];
-      leftovers[i] = leftovers[j];
-      leftovers[j] = t;
+Maze.prototype._spawnHead = function () {
+  const candidates = [];
+  for (let y = 0; y < this.rows; y++) {
+    for (let x = 0; x < this.cols; x++) {
+      if (!this._isVisited(y, x)) continue;
+      if (this._unusedNeighbors(y, x).length) candidates.push({ y: y, x: x });
     }
   }
+  if (!candidates.length) return false;
+  const c = candidates[Math.floor(Math.random() * candidates.length)];
+  this.heads.push({ y: c.y, x: c.x, dir: -1 });
+  return true;
+};
 
-  function fillStep() {
-    if (!leftovers.length) {
-      phase = "done";
-      return { kind: "done" };
+Maze.prototype._collectLeftovers = function () {
+  this.leftovers = [];
+  for (let y = 0; y < this.rows; y++) {
+    for (let x = 0; x < this.cols; x++) {
+      if (!this._isVisited(y, x)) this.leftovers.push({ y: y, x: x });
     }
-    let idx = -1;
-    let link = null;
-    for (let i = 0; i < leftovers.length; i++) {
-      const cell = leftovers[i];
-      const opts = [];
-      for (const d of DIRS) {
-        const nx = cell.x + d.dx;
-        const ny = cell.y + d.dy;
-        if (!inBounds(nx, ny, cols, rows)) continue;
-        if (grid[ny][nx] === OPEN) {
-          opts.push({
-            x: nx,
-            y: ny,
-            midX: cell.x + d.dx / 2,
-            midY: cell.y + d.dy / 2,
-          });
+  }
+  for (let i = this.leftovers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = this.leftovers[i];
+    this.leftovers[i] = this.leftovers[j];
+    this.leftovers[j] = t;
+  }
+};
+
+Maze.prototype._growStep = function () {
+  if (!this.heads.length) {
+    if (!this.reachedGoal) {
+      if (!this._spawnHead()) {
+        let y = this.start.y;
+        const x = this.start.x;
+        while (y > this.goal.y) {
+          this.openPair(y, x, DIR.UP);
+          y -= 1;
+          this._markVisited(y, x);
         }
+        this.reachedGoal = true;
+        this.lastCarved = { y: this.goal.y, x: this.goal.x };
+        return;
       }
-      if (opts.length) {
-        idx = i;
-        link = opts[Math.floor(Math.random() * opts.length)];
-        break;
-      }
+      return;
     }
-    if (idx === -1) {
-      const cell = leftovers[0];
-      let best = null;
-      let bestD = Infinity;
-      for (let y = 1; y < rows; y += 2) {
-        for (let x = 1; x < cols; x += 2) {
-          if (grid[y][x] !== OPEN) continue;
-          const d = Math.abs(x - cell.x) + Math.abs(y - cell.y);
-          if (d > 0 && d < bestD) {
-            bestD = d;
-            best = { x, y };
-          }
-        }
-      }
-      if (!best) {
-        leftovers.splice(0, 1);
-        grid[cell.y][cell.x] = OPEN;
-        lastCarved = cell;
-        return { kind: "fill", cell };
-      }
-      const stepX = Math.sign(best.x - cell.x);
-      const stepY = best.x === cell.x ? Math.sign(best.y - cell.y) : 0;
-      const midX = cell.x + stepX;
-      const midY = cell.y + stepY;
-      grid[cell.y][cell.x] = OPEN;
-      if (inBounds(midX, midY, cols, rows)) grid[midY][midX] = OPEN;
-      lastCarved = cell;
-      leftovers.splice(0, 1);
-      return { kind: "fill", cell };
-    }
-    const cell = leftovers[idx];
-    leftovers.splice(idx, 1);
-    grid[cell.y][cell.x] = OPEN;
-    grid[link.midY][link.midX] = OPEN;
-    lastCarved = cell;
-    return { kind: "fill", cell };
+    this.phase = "fill";
+    this._collectLeftovers();
+    return;
   }
 
-  function growStep() {
-    if (!heads.length) {
-      if (!reachedGoal) {
-        if (!spawnHeadFromExisting()) {
-          let x = start.x;
-          let y = start.y;
-          while (y > goal.y) {
-            y -= 1;
-            grid[y][x] = OPEN;
-          }
-          reachedGoal = true;
-          lastCarved = { ...goal };
-          return { kind: "grow", forced: true };
-        }
-        return { kind: "grow", respawn: true };
-      }
-      phase = "fill";
-      collectLeftovers();
-      return { kind: "phase", phase: "fill", leftoverCount: leftovers.length };
-    }
-
-    const useRandomHead = heads.length > 1 && Math.random() < 0.22;
-    const hi = useRandomHead ? Math.floor(Math.random() * heads.length) : heads.length - 1;
-    const head = heads[hi];
-    const options = neighborsFrom(head.x, head.y, true);
-    if (!options.length) {
-      heads.splice(hi, 1);
-      return { kind: "dead", x: head.x, y: head.y };
-    }
-    const chosen = pickNeighbor(head, options);
-    carveTo(head.x, head.y, chosen);
-    head.x = chosen.x;
-    head.y = chosen.y;
-    head.dir = chosen.dir;
-
-    const remain = neighborsFrom(head.x, head.y, true);
-    if (remain.length && Math.random() < branchChance) {
-      heads.push({ x: head.x, y: head.y, dir: null });
-      return { kind: "branch", x: head.x, y: head.y };
-    }
-    if (chosen.isGoal) {
-      heads.splice(hi, 1);
-      return { kind: "goal", x: chosen.x, y: chosen.y };
-    }
-    return { kind: "carve", x: chosen.x, y: chosen.y };
+  const useRandom = this.heads.length > 1 && Math.random() < 0.22;
+  const hi = useRandom ? Math.floor(Math.random() * this.heads.length) : this.heads.length - 1;
+  const head = this.heads[hi];
+  const options = this._unusedNeighbors(head.y, head.x);
+  if (!options.length) {
+    this.heads.splice(hi, 1);
+    return;
   }
+  const d = this._pickDir(head, options);
+  const ny = head.y + DIR_Y[d];
+  const nx = head.x + DIR_X[d];
+  this.openPair(head.y, head.x, d);
+  this._markVisited(ny, nx);
+  head.y = ny;
+  head.x = nx;
+  head.dir = d;
+  if (ny === this.goal.y && nx === this.goal.x) this.reachedGoal = true;
 
-  function step() {
-    steps += 1;
-    if (phase === "done") return { kind: "done", steps };
-    if (phase === "fill") return fillStep();
-    return growStep();
+  const remain = this._unusedNeighbors(ny, nx);
+  if (remain.length && Math.random() < this.branchChance) {
+    this.heads.push({ y: ny, x: nx, dir: -1 });
   }
+};
 
-  return {
-    step,
-    getPhase: () => phase,
-    getHeads: () => heads,
-    getLastCarved: () => lastCarved,
-    getLeftovers: () => leftovers,
-    reachedGoal: () => reachedGoal,
-    getSteps: () => steps,
-    isDone: () => phase === "done",
-  };
-}
+Maze.prototype._fillStep = function () {
+  if (!this.leftovers.length) {
+    this.phase = "done";
+    return;
+  }
+  let idx = -1;
+  let dir = -1;
+  for (let i = 0; i < this.leftovers.length; i++) {
+    const c = this.leftovers[i];
+    const opts = [];
+    for (let d = 0; d < 4; d++) {
+      const ny = c.y + DIR_Y[d];
+      const nx = c.x + DIR_X[d];
+      if (this.inBounds(ny, nx) && this._isVisited(ny, nx)) opts.push(d);
+    }
+    if (opts.length) {
+      idx = i;
+      dir = opts[Math.floor(Math.random() * opts.length)];
+      break;
+    }
+  }
+  if (idx < 0) {
+    const c = this.leftovers.shift();
+    this._markVisited(c.y, c.x);
+    this.lastCarved = c;
+    return;
+  }
+  const c = this.leftovers.splice(idx, 1)[0];
+  this.openPair(c.y, c.x, dir);
+  this._markVisited(c.y, c.x);
+};
+
+Maze.prototype.stepGenerate = function () {
+  this.steps += 1;
+  if (this.phase === "grow") this._growStep();
+  else if (this.phase === "fill") this._fillStep();
+};
+
+Maze.prototype.isDone = function () {
+  return this.phase === "done";
+};
