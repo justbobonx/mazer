@@ -42,7 +42,7 @@ Maze.prototype.canExit = function (y, x, dir) {
 
 Maze.prototype.openPair = function (y, x, dir) {
   const ny = y + DIR_Y[dir];
-  const nx = x + DIR_X[dir];
+  const nx = x + DIR_X[d];
   if (!this.inBounds(ny, nx)) return false;
   this.cells[y][x].set(dir, 1);
   this.cells[ny][nx].set(DIR_OPP[dir], 1);
@@ -76,6 +76,28 @@ Maze.prototype._unusedNeighbors = function (y, x) {
     out.push(d);
   }
   return out;
+};
+
+Maze.prototype._isSingleIsland = function (y, x) {
+  for (let d = 0; d < 4; d++) {
+    const ny = y + DIR_Y[d];
+    const nx = x + DIR_X[d];
+    if (!this.inBounds(ny, nx)) continue;
+    if (!this._isVisited(ny, nx)) return false;
+  }
+  return true;
+};
+
+Maze.prototype._sealIslands = function () {
+  for (let y = 0; y < this.rows; y++) {
+    for (let x = 0; x < this.cols; x++) {
+      if (this._isVisited(y, x)) continue;
+      if (this._isGoal(y, x)) continue;
+      if (!this._isSingleIsland(y, x)) continue;
+      this._markVisited(y, x);
+      this.lastCarved = { y: y, x: x };
+    }
+  }
 };
 
 Maze.prototype.beginGenerate = function (opts) {
@@ -142,6 +164,7 @@ Maze.prototype._collectLeftovers = function () {
 
 Maze.prototype._growStep = function () {
   if (!this.heads.length) {
+    this._sealIslands();
     if (this._spawnHead()) return;
     this.phase = "fill";
     this._collectLeftovers();
