@@ -8,6 +8,29 @@
   </head>
   <body>
     <canvas id="game"></canvas>
+
+    <div id="hud" hidden>
+      <div class="hud-left">MAZER</div>
+      <div class="hud-right">
+        <span>SCORE <strong id="score">0</strong></span>
+      </div>
+    </div>
+
+    <div id="start-screen" class="overlay">
+      <div class="panel">
+        <h1>MAZER</h1>
+        <p>Run the maze. Diamonds hunt the corridors.</p>
+        <button id="btn-start" type="button">PLAY</button>
+      </div>
+    </div>
+
+    <div id="pause-screen" class="overlay" hidden>
+      <div class="panel">
+        <h1>PAUSED</h1>
+        <button id="btn-resume" type="button">RESUME</button>
+      </div>
+    </div>
+
     <script src="js/maze.js"></script>
     <script src="js/game.js"></script>
   </body>
