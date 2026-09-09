@@ -6,7 +6,7 @@ const SPEED = 2.2;
 const ENEMY_SPEED = 2.0;
 const ENEMY_SIZE = 8;
 const DEFAULT_MAZE_BG = "#000000";
-const WALL_TYPES = [1, 2];
+const WALL_TYPES = [1, 2, 3];
 
 const STATES = {
   START: "start",
