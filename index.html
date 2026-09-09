@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MAZER</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>MAZER</h1>
+      <p id="hud">start</p>
+    </header>
+    <canvas id="game" width="420" height="620"></canvas>
+    <footer>
+      Odd grid, walls and floors are both cells, border is solid wall. Generation
+      grows winding branches from the runner until the goal is hit, then punches
+      leftover rooms into the maze. One carve per frame.
+    </footer>
+    <script src="js/maze.js"></script>
+    <script src="js/game.js"></script>
+  </body>
+</html>
