@@ -2,7 +2,7 @@
 
 function TileSet(types) {
   this.types = types && types.length ? types.slice() : [1];
-  this.index = 0;
+  this.index = 1;
   this.sets = {};
 }
 

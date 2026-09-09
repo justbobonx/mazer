@@ -165,10 +165,11 @@ Maze.prototype._collectLeftovers = function () {
 Maze.prototype._growStep = function () {
   if (!this.heads.length) {
     this._sealIslands();
-    if (this._spawnHead()) return;
-    this.phase = "fill";
-    this._collectLeftovers();
-    return;
+    if (this._spawnHead()) return true;
+    //this.phase = "fill";
+    //this._collectLeftovers();
+    this.phase = "done";    
+    return false;
   }
 
   const useRandom = this.heads.length > 1 && Math.random() < 0.22;
@@ -177,7 +178,7 @@ Maze.prototype._growStep = function () {
   const options = this._unusedNeighbors(head.y, head.x);
   if (!options.length) {
     this.heads.splice(hi, 1);
-    return;
+    return true;
   }
   const d = this._pickDir(head, options);
   const ny = head.y + DIR_Y[d];
@@ -192,46 +193,52 @@ Maze.prototype._growStep = function () {
   const remain = this._unusedNeighbors(ny, nx);
   if (remain.length && Math.random() < this.branchChance) {
     this.heads.push({ y: ny, x: nx, dir: -1 });
+    return true;
   }
+  
+  return false;
 };
 
-Maze.prototype._fillStep = function () {
-  if (!this.leftovers.length) {
-    this.phase = "done";
-    return;
-  }
-  let idx = -1;
-  let dir = -1;
-  for (let i = 0; i < this.leftovers.length; i++) {
-    const c = this.leftovers[i];
-    const opts = [];
-    for (let d = 0; d < 4; d++) {
-      const ny = c.y + DIR_Y[d];
-      const nx = c.x + DIR_X[d];
-      if (this.inBounds(ny, nx) && this._isVisited(ny, nx)) opts.push(d);
-    }
-    if (opts.length) {
-      idx = i;
-      dir = opts[Math.floor(Math.random() * opts.length)];
-      break;
-    }
-  }
-  if (idx < 0) {
-    const c = this.leftovers.shift();
-    this._markVisited(c.y, c.x);
-    this.lastCarved = c;
-    return;
-  }
-  const c = this.leftovers.splice(idx, 1)[0];
-  this.openPair(c.y, c.x, dir);
-  this._markVisited(c.y, c.x);
-  if (this._isGoal(c.y, c.x)) this.reachedGoal = true;
-};
-
-Maze.prototype.stepGenerate = function () {
-  this.steps += 1;
-  if (this.phase === "grow") this._growStep();
-  else if (this.phase === "fill") this._fillStep();
+// Maze.prototype._fillStep = function () {
+  // if (!this.leftovers.length) {
+    // this.phase = "done";
+    // return;
+  // }
+  // let idx = -1;
+  // let dir = -1;
+  // for (let i = 0; i < this.leftovers.length; i++) {
+    // const c = this.leftovers[i];
+    // const opts = [];
+    // for (let d = 0; d < 4; d++) {
+      // const ny = c.y + DIR_Y[d];
+      // const nx = c.x + DIR_X[d];
+      // if (this.inBounds(ny, nx) && this._isVisited(ny, nx)) opts.push(d);
+    // }
+    // if (opts.length) {
+      // idx = i;
+      // dir = opts[Math.floor(Math.random() * opts.length)];
+      // break;
+    // }
+  // }
+  // if (idx < 0) {
+    // const c = this.leftovers.shift();
+    // this._markVisited(c.y, c.x);
+    // this.lastCarved = c;
+    // return;
+  // }
+  // const c = this.leftovers.splice(idx, 1)[0];
+  // this.openPair(c.y, c.x, dir);
+  // this._markVisited(c.y, c.x);
+  // if (this._isGoal(c.y, c.x)) this.reachedGoal = true;
+// };
+	
+Maze.prototype.stepGenerate = function () {  
+  while( this.phase != "done" ) {
+    this.steps += 1;
+    if (this.phase === "grow")
+      if( this._growStep() )  break;
+  }  
+  //else if (this.phase === "fill") this._fillStep();
 };
 
 Maze.prototype.isDone = function () {
