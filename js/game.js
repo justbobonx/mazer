@@ -6,6 +6,7 @@ const SPEED = 2.2;
 const ENEMY_SPEED = 2.0;
 const ENEMY_SIZE = 8;
 const DEFAULT_MAZE_BG = "#000000";
+const WALL_TYPES = [1, 2];
 
 const STATES = {
   START: "start",
@@ -23,7 +24,7 @@ const elScore = document.getElementById("score");
 const btnStart = document.getElementById("btn-start");
 const btnResume = document.getElementById("btn-resume");
 
-const tiles = new TileSet(1);
+const tiles = new TileSet(WALL_TYPES);
 tiles.load();
 
 let state = STATES.START;
@@ -109,7 +110,7 @@ function readWanted() {
   let dy = 0;
   if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) dx = -1;
   else if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) dx = 1;
-  else if (keys.has("ArrowUp") || keys.has("w") || keys.has("W")) dy = -1;
+  else if (keys.has("ArrowUp")) dy = -1;
   else if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) dy = 1;
   if (dx || dy) wanted = { dx: dx, dy: dy };
 }
@@ -244,6 +245,16 @@ btnStart.addEventListener("click", function () {
 btnResume.addEventListener("click", togglePause);
 
 window.addEventListener("keydown", function (e) {
+  if (e.repeat) {
+    if (e.key === "w" || e.key === "W") e.preventDefault();
+    else keys.add(e.key);
+    return;
+  }
+  if (e.key === "w" || e.key === "W") {
+    e.preventDefault();
+    tiles.cycle();
+    return;
+  }
   keys.add(e.key);
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
   if (state === STATES.START && (e.key === "Enter" || e.key === " ")) {
