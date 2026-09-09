@@ -62,6 +62,10 @@ Maze.prototype._isVisited = function (y, x) {
   return !!this.visited[this._key(y, x)];
 };
 
+Maze.prototype._isGoal = function (y, x) {
+  return y === this.goal.y && x === this.goal.x;
+};
+
 Maze.prototype._unusedNeighbors = function (y, x) {
   const out = [];
   for (let d = 0; d < 4; d++) {
@@ -83,7 +87,6 @@ Maze.prototype.beginGenerate = function (opts) {
   this.leftovers = [];
   this.reachedGoal = this.start.y === this.goal.y && this.start.x === this.goal.x;
   this._markVisited(this.start.y, this.start.x);
-  this._markVisited(this.goal.y, this.goal.x);
   this.heads = [{ y: this.start.y, x: this.start.x, dir: -1 }];
   this.phase = "grow";
   this.lastCarved = { y: this.start.y, x: this.start.x };
@@ -139,21 +142,7 @@ Maze.prototype._collectLeftovers = function () {
 
 Maze.prototype._growStep = function () {
   if (!this.heads.length) {
-    if (!this.reachedGoal) {
-      if (!this._spawnHead()) {
-        let y = this.start.y;
-        const x = this.start.x;
-        while (y > this.goal.y) {
-          this.openPair(y, x, DIR.UP);
-          y -= 1;
-          this._markVisited(y, x);
-        }
-        this.reachedGoal = true;
-        this.lastCarved = { y: this.goal.y, x: this.goal.x };
-        return;
-      }
-      return;
-    }
+    if (this._spawnHead()) return;
     this.phase = "fill";
     this._collectLeftovers();
     return;
@@ -175,7 +164,7 @@ Maze.prototype._growStep = function () {
   head.y = ny;
   head.x = nx;
   head.dir = d;
-  if (ny === this.goal.y && nx === this.goal.x) this.reachedGoal = true;
+  if (this._isGoal(ny, nx)) this.reachedGoal = true;
 
   const remain = this._unusedNeighbors(ny, nx);
   if (remain.length && Math.random() < this.branchChance) {
@@ -213,6 +202,7 @@ Maze.prototype._fillStep = function () {
   const c = this.leftovers.splice(idx, 1)[0];
   this.openPair(c.y, c.x, dir);
   this._markVisited(c.y, c.x);
+  if (this._isGoal(c.y, c.x)) this.reachedGoal = true;
 };
 
 Maze.prototype.stepGenerate = function () {
