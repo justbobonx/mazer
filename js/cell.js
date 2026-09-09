@@ -29,8 +29,8 @@ Cell.prototype.openings = function () {
   return out;
 };
 
-/** Image index. bit0=right, bit1=down, bit2=left, bit3=up. [0,1,1,0] -> 3. */
+/** Image index. up=1, right=2, down=4, left=8. [0,1,1,0] -> 6. */
 Cell.prototype.mask = function () {
   const e = this.exits;
-  return (e[1] & 1) | ((e[2] & 1) << 1) | ((e[3] & 1) << 2) | ((e[0] & 1) << 3);
+  return (e[0] & 1) | ((e[1] & 1) << 1) | ((e[2] & 1) << 2) | ((e[3] & 1) << 3);
 };
