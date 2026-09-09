@@ -5,6 +5,7 @@ const RADIUS = 7;
 const SPEED = 2.2;
 const ENEMY_SPEED = 2.0;
 const ENEMY_SIZE = 8;
+const DEFAULT_MAZE_BG = "#000000";
 
 const STATES = {
   START: "start",
@@ -32,6 +33,7 @@ let rows = 5;
 let scale = 1;
 let originX = 0;
 let originY = 0;
+let mazeBg = DEFAULT_MAZE_BG;
 let maze = null;
 let player = null;
 let enemies = [];
@@ -39,6 +41,10 @@ let keys = new Set();
 let wanted = { dx: 0, dy: 0 };
 let score = 0;
 let resizeTimer = 0;
+
+function setMazeBg(color) {
+  mazeBg = color || DEFAULT_MAZE_BG;
+}
 
 function clamp(n, lo, hi) {
   return Math.max(lo, Math.min(hi, n));
@@ -130,10 +136,10 @@ function onGoal() {
 
 function drawFloor() {
   toScreen();
-  ctx.fillStyle = "#07080b";
+  ctx.fillStyle = mazeBg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   toWorld();
-  ctx.fillStyle = "#2a3340";
+  ctx.fillStyle = mazeBg;
   ctx.fillRect(0, 0, cols * CELL, rows * CELL);
 
   const carved = maze.lastCarved;
@@ -199,7 +205,7 @@ function togglePause() {
 function frame() {
   if (state === STATES.START) {
     toScreen();
-    ctx.fillStyle = "#07080b";
+    ctx.fillStyle = mazeBg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   } else if (state === STATES.MAKE) {
     maze.stepGenerate();

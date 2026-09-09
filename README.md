@@ -4,6 +4,8 @@ HTML5 canvas maze. Open `index.html` in a browser.
 
 Full-window canvas. Logical cells stay 20px. Grid size fills the window from 5×5 up to 20×20. If the window is larger than that 20×20 maze, the canvas transform scales the maze to use the extra space and centers leftover pixels as a margin.
 
+Maze background color sits under the wall sprites. Default is `#000000`. Change it with `setMazeBg("#1a2030")`.
+
 Each cell is `[up, right, down, left]`. `Maze.cells[y][x]` with `[0][0]` at the upper left. Opening a side also opens the opposite side on the neighbor. Wall tiles `images/wall_1_{mask}.png` are drawn last. Mask bits: up=1, right=2, down=4, left=8.
 
 HTML overlay for start, pause, and score. Generation still draws on the canvas.
