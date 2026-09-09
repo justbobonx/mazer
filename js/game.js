@@ -1,24 +1,45 @@
 const CELL = 20;
 const RADIUS = 7;
-const SPEED = 2.6;
+const SPEED = 2.2;
+const ENEMY_SPEED = 2.0;
+const ENEMY_SIZE = 8;
+
+const CARD = [
+  { dx: 0, dy: -1, name: "N" },
+  { dx: 1, dy: 0, name: "E" },
+  { dx: 0, dy: 1, name: "S" },
+  { dx: -1, dy: 0, name: "W" },
+];
 
 const STATES = {
+  START: "start",
   MAKE: "make",
   PLAY: "play",
+  PAUSE: "pause",
 };
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+const elStart = document.getElementById("start-screen");
+const elPause = document.getElementById("pause-screen");
+const elHud = document.getElementById("hud");
+const elScore = document.getElementById("score");
+const btnStart = document.getElementById("btn-start");
+const btnResume = document.getElementById("btn-resume");
 
-let state = STATES.MAKE;
+let state = STATES.START;
+let beforePause = STATES.PLAY;
 let cols = 5;
 let rows = 5;
 let originX = 0;
 let originY = 0;
 let maze = null;
 let gen = null;
-let player = { x: 0, y: 0 };
+let player = null;
+let enemies = [];
 let keys = new Set();
+let wanted = { dx: 0, dy: 0 };
+let score = 0;
 let resizeTimer = 0;
 
 function oddFit(pixels) {
@@ -39,11 +60,49 @@ function fitGrid() {
   originY = Math.floor((h - rows * CELL) / 2);
 }
 
-function startCellCenter() {
-  return {
-    x: maze.start.x * CELL + CELL / 2,
-    y: maze.start.y * CELL + CELL / 2,
-  };
+function cellCenter(cx, cy) {
+  return { x: cx * CELL + CELL / 2, y: cy * CELL + CELL / 2 };
+}
+
+function isOpen(cx, cy) {
+  if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return false;
+  return maze.grid[cy][cx] === OPEN;
+}
+
+function openings(cx, cy) {
+  const out = [];
+  for (const d of CARD) {
+    if (isOpen(cx + d.dx, cy + d.dy)) out.push(d);
+  }
+  return out;
+}
+
+function makeActor(cx, cy, speed) {
+  const c = cellCenter(cx, cy);
+  return { x: c.x, y: c.y, dx: 0, dy: 0, speed };
+}
+
+function cornerCells() {
+  return [
+    { x: 1, y: 1 },
+    { x: cols - 2, y: 1 },
+    { x: 1, y: rows - 2 },
+    { x: cols - 2, y: rows - 2 },
+  ];
+}
+
+function spawnActors() {
+  player = makeActor(maze.start.x, maze.start.y, SPEED);
+  enemies = cornerCells().map((c) => {
+    const e = makeActor(c.x, c.y, ENEMY_SPEED);
+    const opts = openings(c.x, c.y);
+    if (opts.length) {
+      const d = opts[Math.floor(Math.random() * opts.length)];
+      e.dx = d.dx;
+      e.dy = d.dy;
+    }
+    return e;
+  });
 }
 
 function resetMaze() {
@@ -53,107 +112,147 @@ function resetMaze() {
     keepDirChance: 0.74,
     goalBias: 0.3,
   });
-  player = startCellCenter();
+  player = makeActor(maze.start.x, maze.start.y, SPEED);
+  enemies = [];
+}
+
+function setOverlay() {
+  elStart.hidden = state !== STATES.START;
+  elPause.hidden = state !== STATES.PAUSE;
+  elHud.hidden = state === STATES.START;
+  elScore.textContent = String(score);
 }
 
 function beginGenerate() {
   fitGrid();
   state = STATES.MAKE;
   resetMaze();
+  setOverlay();
 }
 
-function clamp(v, a, b) {
-  return v < a ? a : v > b ? b : v;
+function sameDir(a, b) {
+  return a.dx === b.dx && a.dy === b.dy;
 }
 
-function isWallAt(cx, cy) {
-  if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return true;
-  return maze.grid[cy][cx] === WALL;
+function isReverse(a, b) {
+  return a.dx === -b.dx && a.dy === -b.dy && (a.dx !== 0 || a.dy !== 0);
 }
 
-function separateCircleRect(px, py, r, rx, ry, rw, rh) {
-  const closestX = clamp(px, rx, rx + rw);
-  const closestY = clamp(py, ry, ry + rh);
-  let dx = px - closestX;
-  let dy = py - closestY;
-  const dist2 = dx * dx + dy * dy;
+function readWanted() {
+  let dx = 0;
+  let dy = 0;
+  if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) dx = -1;
+  else if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) dx = 1;
+  else if (keys.has("ArrowUp") || keys.has("w") || keys.has("W")) dy = -1;
+  else if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) dy = 1;
+  if (dx || dy) wanted = { dx, dy };
+}
 
-  if (dist2 > r * r) return null;
-
-  if (dist2 === 0) {
-    const left = px - rx;
-    const right = rx + rw - px;
-    const top = py - ry;
-    const bottom = ry + rh - py;
-    const m = Math.min(left, right, top, bottom);
-    if (m === left) return { x: rx - r, y: py };
-    if (m === right) return { x: rx + rw + r, y: py };
-    if (m === top) return { x: px, y: ry - r };
-    return { x: px, y: ry + rh + r };
+function choosePlayer(actor, cx, cy) {
+  if ((wanted.dx || wanted.dy) && isOpen(cx + wanted.dx, cy + wanted.dy)) {
+    actor.dx = wanted.dx;
+    actor.dy = wanted.dy;
+    return;
   }
-
-  const dist = Math.sqrt(dist2);
-  const pen = r - dist;
-  if (pen <= 0) return null;
-  return { x: px + (dx / dist) * pen, y: py + (dy / dist) * pen };
+  if ((actor.dx || actor.dy) && isOpen(cx + actor.dx, cy + actor.dy)) return;
+  actor.dx = 0;
+  actor.dy = 0;
 }
 
-function collideWalls(px, py) {
-  const r = RADIUS;
-  let x = px;
-  let y = py;
-  for (let pass = 0; pass < 3; pass++) {
-    const minC = Math.floor((x - r) / CELL);
-    const maxC = Math.floor((x + r) / CELL);
-    const minR = Math.floor((y - r) / CELL);
-    const maxR = Math.floor((y + r) / CELL);
-    let moved = false;
-    for (let cy = minR; cy <= maxR; cy++) {
-      for (let cx = minC; cx <= maxC; cx++) {
-        if (!isWallAt(cx, cy)) continue;
-        const next = separateCircleRect(x, y, r, cx * CELL, cy * CELL, CELL, CELL);
-        if (next) {
-          x = next.x;
-          y = next.y;
-          moved = true;
-        }
-      }
+function chooseEnemy(actor, cx, cy) {
+  const opts = openings(cx, cy);
+  if (!opts.length) {
+    actor.dx = 0;
+    actor.dy = 0;
+    return;
+  }
+  const forward = opts.filter((d) => sameDir(d, actor));
+  const sides = opts.filter((d) => !sameDir(d, actor) && !isReverse(d, actor));
+  const back = opts.filter((d) => isReverse(d, actor));
+
+  if (sides.length + forward.length >= 2) {
+    const pool = sides.concat(forward);
+    const d = pool[Math.floor(Math.random() * pool.length)];
+    actor.dx = d.dx;
+    actor.dy = d.dy;
+    return;
+  }
+  if (forward.length) return;
+  if (sides.length) {
+    const d = sides[Math.floor(Math.random() * sides.length)];
+    actor.dx = d.dx;
+    actor.dy = d.dy;
+    return;
+  }
+  if (back.length) {
+    actor.dx = back[0].dx;
+    actor.dy = back[0].dy;
+    return;
+  }
+  actor.dx = 0;
+  actor.dy = 0;
+}
+
+function stepActor(actor, chooseDir) {
+  const cx = Math.floor(actor.x / CELL);
+  const cy = Math.floor(actor.y / CELL);
+  const c = cellCenter(cx, cy);
+  const nearX = Math.abs(actor.x - c.x) <= actor.speed;
+  const nearY = Math.abs(actor.y - c.y) <= actor.speed;
+  const atCenter = nearX && nearY;
+
+  if (atCenter) {
+    actor.x = c.x;
+    actor.y = c.y;
+    chooseDir(actor, cx, cy);
+    if (!actor.dx && !actor.dy) return;
+    if (!isOpen(cx + actor.dx, cy + actor.dy)) {
+      actor.dx = 0;
+      actor.dy = 0;
+      return;
     }
-    if (!moved) break;
+  } else {
+    if (actor.dx !== 0) actor.y = c.y;
+    else if (actor.dy !== 0) actor.x = c.x;
   }
-  return { x, y };
+
+  if (actor === player && (wanted.dx || wanted.dy) && isReverse(wanted, actor)) {
+    if (isOpen(cx + wanted.dx, cy + wanted.dy) || !atCenter) {
+      actor.dx = wanted.dx;
+      actor.dy = wanted.dy;
+    }
+  }
+
+  const nx = actor.x + actor.dx * actor.speed;
+  const ny = actor.y + actor.dy * actor.speed;
+  const ncx = Math.floor(nx / CELL);
+  const ncy = Math.floor(ny / CELL);
+  if (!isOpen(ncx, ncy)) {
+    actor.x = c.x;
+    actor.y = c.y;
+    actor.dx = 0;
+    actor.dy = 0;
+    return;
+  }
+  actor.x = nx;
+  actor.y = ny;
 }
 
-function movePlayer() {
-  let vx = 0;
-  let vy = 0;
-  if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) vx -= 1;
-  if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) vx += 1;
-  if (keys.has("ArrowUp") || keys.has("w") || keys.has("W")) vy -= 1;
-  if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) vy += 1;
-  if (vx !== 0 && vy !== 0) {
-    const inv = Math.SQRT1_2;
-    vx *= inv;
-    vy *= inv;
+function hitEnemy() {
+  for (const e of enemies) {
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const lim = RADIUS + ENEMY_SIZE * 0.7;
+    if (dx * dx + dy * dy <= lim * lim) return true;
   }
-  if (vx === 0 && vy === 0) return;
-
-  const next = collideWalls(player.x + vx * SPEED, player.y + vy * SPEED);
-  player.x = next.x;
-  player.y = next.y;
+  return false;
 }
 
 function onGoal() {
-  const gx = maze.goal.x * CELL + CELL / 2;
-  const gy = maze.goal.y * CELL + CELL / 2;
-  const dx = player.x - gx;
-  const dy = player.y - gy;
-  return dx * dx + dy * dy <= (CELL * 0.35) * (CELL * 0.35);
-}
-
-function drawCell(cx, cy, color) {
-  ctx.fillStyle = color;
-  ctx.fillRect(originX + cx * CELL, originY + cy * CELL, CELL, CELL);
+  const g = cellCenter(maze.goal.x, maze.goal.y);
+  const dx = player.x - g.x;
+  const dy = player.y - g.y;
+  return dx * dx + dy * dy <= 36;
 }
 
 function drawMaze() {
@@ -164,7 +263,10 @@ function drawMaze() {
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < cols; x++) {
-      if (maze.grid[y][x] === OPEN) drawCell(x, y, "#3a4554");
+      if (maze.grid[y][x] === OPEN) {
+        ctx.fillStyle = "#3a4554";
+        ctx.fillRect(originX + x * CELL, originY + y * CELL, CELL, CELL);
+      }
     }
   }
 
@@ -190,6 +292,23 @@ function drawGuy() {
   ctx.fill();
 }
 
+function drawDiamond(e) {
+  const x = originX + e.x;
+  const y = originY + e.y;
+  const s = ENEMY_SIZE;
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.lineTo(x + s, y);
+  ctx.lineTo(x, y + s);
+  ctx.lineTo(x - s, y);
+  ctx.closePath();
+  ctx.fillStyle = "#e23d3d";
+  ctx.fill();
+  ctx.strokeStyle = "#ff8a8a";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
 function drawMakeExtras() {
   const carved = gen.getLastCarved();
   if (carved) {
@@ -204,30 +323,73 @@ function drawMakeExtras() {
   }
 }
 
+function togglePause() {
+  if (state === STATES.PLAY) {
+    beforePause = state;
+    state = STATES.PAUSE;
+    setOverlay();
+  } else if (state === STATES.PAUSE) {
+    state = beforePause;
+    setOverlay();
+  }
+}
+
 function frame() {
-  if (state === STATES.MAKE) {
+  if (state === STATES.START) {
+    ctx.fillStyle = "#07080b";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else if (state === STATES.MAKE) {
     gen.step();
-    player = startCellCenter();
+    player.x = cellCenter(maze.start.x, maze.start.y).x;
+    player.y = cellCenter(maze.start.x, maze.start.y).y;
     drawMaze();
     drawMakeExtras();
     drawGuy();
-    if (gen.isDone()) state = STATES.PLAY;
-  } else {
-    movePlayer();
-    if (onGoal()) {
-      beginGenerate();
-    } else {
-      drawMaze();
-      drawGuy();
+    if (gen.isDone()) {
+      spawnActors();
+      state = STATES.PLAY;
+      setOverlay();
     }
+  } else if (state === STATES.PLAY) {
+    readWanted();
+    stepActor(player, choosePlayer);
+    for (const e of enemies) stepActor(e, chooseEnemy);
+    if (onGoal()) {
+      score += 100;
+      elScore.textContent = String(score);
+      beginGenerate();
+    } else if (hitEnemy()) {
+      spawnActors();
+    }
+    drawMaze();
+    drawGuy();
+    for (const e of enemies) drawDiamond(e);
+  } else if (state === STATES.PAUSE) {
+    drawMaze();
+    drawGuy();
+    for (const e of enemies) drawDiamond(e);
   }
   requestAnimationFrame(frame);
 }
 
+btnStart.addEventListener("click", () => {
+  score = 0;
+  beginGenerate();
+});
+
+btnResume.addEventListener("click", togglePause);
+
 window.addEventListener("keydown", (e) => {
   keys.add(e.key);
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
-  if (e.key === "r" || e.key === "R") beginGenerate();
+  if (state === STATES.START && (e.key === "Enter" || e.key === " ")) {
+    score = 0;
+    beginGenerate();
+  }
+  if ((e.key === "p" || e.key === "P" || e.key === "Escape") && (state === STATES.PLAY || state === STATES.PAUSE)) {
+    togglePause();
+  }
+  if ((e.key === "r" || e.key === "R") && (state === STATES.PLAY || state === STATES.PAUSE)) beginGenerate();
 });
 
 window.addEventListener("keyup", (e) => {
@@ -236,8 +398,12 @@ window.addEventListener("keyup", (e) => {
 
 window.addEventListener("resize", () => {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(beginGenerate, 120);
+  resizeTimer = setTimeout(() => {
+    fitGrid();
+    if (state === STATES.PLAY || state === STATES.MAKE || state === STATES.PAUSE) beginGenerate();
+  }, 120);
 });
 
-beginGenerate();
+fitGrid();
+setOverlay();
 frame();
