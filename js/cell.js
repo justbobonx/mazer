@@ -32,5 +32,5 @@ Cell.prototype.openings = function () {
 /** Image index. bit0=right, bit1=down, bit2=left, bit3=up. [0,1,1,0] -> 3. */
 Cell.prototype.mask = function () {
   const e = this.exits;
-  return (e[1] & 1) | ((e[2] & 1) << 1) | ((e[3] & 1) << 2) | ((e[0] & 1) << 8 >> 5);
+  return (e[1] & 1) | ((e[2] & 1) << 1) | ((e[3] & 1) << 2) | ((e[0] & 1) << 3);
 };
