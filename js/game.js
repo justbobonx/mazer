@@ -111,9 +111,9 @@ function onGoal() {
 }
 
 function drawFloor() {
-  ctx.fillStyle = "#07080b";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#2a3340";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#000000";
   ctx.fillRect(originX, originY, cols * CELL, rows * CELL);
 
   const carved = maze.lastCarved;
