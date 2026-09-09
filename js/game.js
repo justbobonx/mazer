@@ -1,4 +1,6 @@
 const CELL = 20;
+const MIN_GRID = 5;
+const MAX_GRID = 20;
 const RADIUS = 7;
 const SPEED = 2.2;
 const ENEMY_SPEED = 2.0;
@@ -27,6 +29,7 @@ let state = STATES.START;
 let beforePause = STATES.PLAY;
 let cols = 5;
 let rows = 5;
+let scale = 1;
 let originX = 0;
 let originY = 0;
 let maze = null;
@@ -37,15 +40,30 @@ let wanted = { dx: 0, dy: 0 };
 let score = 0;
 let resizeTimer = 0;
 
+function clamp(n, lo, hi) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
 function fitGrid() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   canvas.width = w;
   canvas.height = h;
-  cols = Math.max(5, Math.floor(w / CELL));
-  rows = Math.max(5, Math.floor(h / CELL));
-  originX = Math.floor((w - cols * CELL) / 2);
-  originY = Math.floor((h - rows * CELL) / 2);
+  cols = clamp(Math.floor(w / CELL), MIN_GRID, MAX_GRID);
+  rows = clamp(Math.floor(h / CELL), MIN_GRID, MAX_GRID);
+  const mazeW = cols * CELL;
+  const mazeH = rows * CELL;
+  scale = Math.min(w / mazeW, h / mazeH);
+  originX = Math.floor((w - mazeW * scale) / 2);
+  originY = Math.floor((h - mazeH * scale) / 2);
+}
+
+function toScreen() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+
+function toWorld() {
+  ctx.setTransform(scale, 0, 0, scale, originX, originY);
 }
 
 function spawnActors() {
@@ -111,48 +129,49 @@ function onGoal() {
 }
 
 function drawFloor() {
-  ctx.fillStyle = "#2a3340";
+  toScreen();
+  ctx.fillStyle = "#07080b";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(originX, originY, cols * CELL, rows * CELL);
+  toWorld();
+  ctx.fillStyle = "#2a3340";
+  ctx.fillRect(0, 0, cols * CELL, rows * CELL);
 
   const carved = maze.lastCarved;
   if (state === STATES.MAKE && carved) {
     ctx.fillStyle = maze.phase === "fill" ? "#6ec6ff" : "#ffd36a";
-    ctx.fillRect(originX + carved.x * CELL, originY + carved.y * CELL, CELL, CELL);
+    ctx.fillRect(carved.x * CELL, carved.y * CELL, CELL, CELL);
   }
 
   ctx.fillStyle = "#1f6f4a";
   const pad = 3;
   ctx.fillRect(
-    originX + maze.goal.x * CELL + pad,
-    originY + maze.goal.y * CELL + pad,
+    maze.goal.x * CELL + pad,
+    maze.goal.y * CELL + pad,
     CELL - pad * 2,
     CELL - pad * 2
   );
 }
 
 function drawActors() {
+  toWorld();
   if (state === STATES.MAKE) {
     ctx.fillStyle = "#ff6b6b";
     for (let i = 0; i < maze.heads.length; i++) {
       const h = maze.heads[i];
-      ctx.fillRect(originX + h.x * CELL + 4, originY + h.y * CELL + 4, CELL - 8, CELL - 8);
+      ctx.fillRect(h.x * CELL + 4, h.y * CELL + 4, CELL - 8, CELL - 8);
     }
   }
   ctx.beginPath();
   ctx.fillStyle = "#ffb347";
-  ctx.arc(originX + player.x, originY + player.y, RADIUS, 0, Math.PI * 2);
+  ctx.arc(player.x, player.y, RADIUS, 0, Math.PI * 2);
   ctx.fill();
   for (let i = 0; i < enemies.length; i++) {
     const e = enemies[i];
-    const x = originX + e.x;
-    const y = originY + e.y;
     ctx.beginPath();
-    ctx.moveTo(x, y - ENEMY_SIZE);
-    ctx.lineTo(x + ENEMY_SIZE, y);
-    ctx.lineTo(x, y + ENEMY_SIZE);
-    ctx.lineTo(x - ENEMY_SIZE, y);
+    ctx.moveTo(e.x, e.y - ENEMY_SIZE);
+    ctx.lineTo(e.x + ENEMY_SIZE, e.y);
+    ctx.lineTo(e.x, e.y + ENEMY_SIZE);
+    ctx.lineTo(e.x - ENEMY_SIZE, e.y);
     ctx.closePath();
     ctx.fillStyle = "#e23d3d";
     ctx.fill();
@@ -162,7 +181,8 @@ function drawActors() {
 function drawFrame() {
   drawFloor();
   drawActors();
-  tiles.draw(ctx, maze, originX, originY, CELL);
+  toWorld();
+  tiles.draw(ctx, maze, 0, 0, CELL);
 }
 
 function togglePause() {
@@ -178,6 +198,7 @@ function togglePause() {
 
 function frame() {
   if (state === STATES.START) {
+    toScreen();
     ctx.fillStyle = "#07080b";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   } else if (state === STATES.MAKE) {
@@ -236,8 +257,11 @@ window.addEventListener("keyup", function (e) {
 window.addEventListener("resize", function () {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(function () {
+    const oldCols = cols;
+    const oldRows = rows;
     fitGrid();
-    if (state === STATES.PLAY || state === STATES.MAKE || state === STATES.PAUSE) beginGenerate();
+    if (state === STATES.START) return;
+    if (cols !== oldCols || rows !== oldRows) beginGenerate();
   }, 120);
 });
 
