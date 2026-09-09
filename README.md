@@ -4,7 +4,7 @@ HTML5 canvas maze. Open `index.html` in a browser.
 
 Full-window canvas. 20px cells. Grid size fills the window; leftover pixels sit as a margin.
 
-Each cell is `[up, right, down, left]`. `Maze.cells[y][x]` with `[0][0]` at the upper left. Opening a side also opens the opposite side on the neighbor. Wall tiles `images/wall_1_{mask}.png` are drawn last. Mask bits: right=1, down=2, left=4, up=8.
+Each cell is `[up, right, down, left]`. `Maze.cells[y][x]` with `[0][0]` at the upper left. Opening a side also opens the opposite side on the neighbor. Wall tiles `images/wall_1_{mask}.png` are drawn last. Mask bits: up=1, right=2, down=4, left=8.
 
 HTML overlay for start, pause, and score. Generation still draws on the canvas.
 
