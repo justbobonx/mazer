@@ -115,7 +115,7 @@ function readInput() {
   let dy = 0;
   if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) dx = -1;
   else if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) dx = 1;
-  else if (keys.has("ArrowUp")) dy = -1;
+  if (keys.has("ArrowUp")) dy = -1;
   else if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) dy = 1;
   return { dx: dx, dy: dy };
 }
