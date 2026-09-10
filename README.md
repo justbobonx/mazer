@@ -10,7 +10,7 @@ Each cell is `[up, right, down, left]`. `Maze.cells[y][x]` with `[0][0]` at the 
 
 HTML overlay for start, pause, and score. Generation still draws on the canvas.
 
-Movement is pseudo-physics on the maze graph. Input is intent; `vx`/`vy` are the body. Accel hits cap in one frame; reversing takes about three. A step that would enter a neighbor asks `maze.canExit` from the cell you started in. Closed face: stop on this side of the edge and zero that axis. Open face: keep the float. Off the centerline by at most `speed` with that face open: snap onto the rail and take the side passage. A step that would enter a diagonal cell keeps the stronger analog axis, or current speed if analog is tied. Game feeds the player. Enemy seeks with the same `setInput` API.
+Movement is pseudo-physics on the maze graph. Input is intent; `vx`/`vy` are the body. Accel hits cap in one frame; reversing takes about three. A step that would enter a neighbor asks `maze.canExit` from the cell you started in. Closed face: stop at this cell's center and zero that axis. Open face: travel the rail toward the next center. Off the centerline by at most `speed` with that face open: snap onto the rail and take the side passage. A step that would enter a diagonal cell keeps the stronger analog axis, or current speed if analog is tied. Game feeds the player. Enemy seeks with the same `setInput` API.
 
 Four red diamonds spawn in the corners and walk the graph toward the player.
 

@@ -1,7 +1,5 @@
 /** Corridor body. Graph is the hit test. Draw is a stand-in for a Sprite. */
 
-const ACTOR_EDGE = 1e-4;
-
 function Actor(cellY, cellX, speed, cellSize, look) {
   this.speed = speed;
   this.accel = speed;
@@ -60,24 +58,27 @@ Actor.prototype._axisDir = function (delta, horiz) {
   return -1;
 };
 
-Actor.prototype._edge = function (index, vel) {
-  if (vel > 0) return (index + 1) * this.cellSize - ACTOR_EDGE;
-  if (vel < 0) return index * this.cellSize + ACTOR_EDGE;
-  return index * this.cellSize + this.cellSize / 2;
+Actor.prototype._open = function (maze, g, delta, horiz) {
+  const dir = this._axisDir(delta, horiz);
+  return dir >= 0 && maze.canExit(g.y, g.x, dir);
+};
+
+/** Closed face: cannot leave this cell's center toward that face. */
+Actor.prototype._againstCenter = function (pos, vel, center, open) {
+  if (!vel) return { pos: pos, vel: vel };
+  if (open) return { pos: pos + vel, vel: vel };
+  const next = pos + vel;
+  if (vel > 0 && next > center) return { pos: center, vel: 0 };
+  if (vel < 0 && next < center) return { pos: center, vel: 0 };
+  return { pos: next, vel: vel };
 };
 
 Actor.prototype._nudgeRail = function (maze, g, c) {
-  if (this.iy) {
-    const dir = this._axisDir(this.iy, false);
-    if (dir >= 0 && maze.canExit(g.y, g.x, dir) && Math.abs(this.x - c.x) <= this.speed) {
-      this.x = c.x;
-    }
+  if (this.iy && this._open(maze, g, this.iy, false) && Math.abs(this.x - c.x) <= this.speed) {
+    this.x = c.x;
   }
-  if (this.ix) {
-    const dir = this._axisDir(this.ix, true);
-    if (dir >= 0 && maze.canExit(g.y, g.x, dir) && Math.abs(this.y - c.y) <= this.speed) {
-      this.y = c.y;
-    }
+  if (this.ix && this._open(maze, g, this.ix, true) && Math.abs(this.y - c.y) <= this.speed) {
+    this.y = c.y;
   }
 };
 
@@ -102,47 +103,36 @@ Actor.prototype.step = function (maze) {
   const c = this.centerOf(g.y, g.x);
   this._nudgeRail(maze, g, c);
 
-  const nx = this.x + this.vx;
-  const ny = this.y + this.vy;
-  const ngx = Math.floor(nx / this.cellSize);
-  const ngy = Math.floor(ny / this.cellSize);
-  const crossedX = ngx !== g.x && this.vx !== 0;
-  const crossedY = ngy !== g.y && this.vy !== 0;
+  const xHit = this._againstCenter(this.x, this.vx, c.x, this._open(maze, g, this.vx, true));
+  const yHit = this._againstCenter(this.y, this.vy, c.y, this._open(maze, g, this.vy, false));
+  let nx = xHit.pos;
+  let ny = yHit.pos;
+  this.vx = xHit.vel;
+  this.vy = yHit.vel;
 
-  const dirX = this._axisDir(this.vx, true);
-  const dirY = this._axisDir(this.vy, false);
-  const canX = !crossedX || (dirX >= 0 && maze.canExit(g.y, g.x, dirX));
-  const canY = !crossedY || (dirY >= 0 && maze.canExit(g.y, g.x, dirY));
-
-  let keepX = true;
-  let keepY = true;
-  if (crossedX && crossedY && canX && canY) {
+  const offX = Math.abs(nx - c.x) > 0.0001;
+  const offY = Math.abs(ny - c.y) > 0.0001;
+  if (offX && offY) {
     const pick = this._pickAxis(oldVx, oldVy);
-    keepX = pick === "x";
-    keepY = pick === "y";
-  }
-
-  if (this.vx) {
-    if (crossedX && !canX) {
-      this.x = this._edge(g.x, this.vx);
+    if (pick === "x") {
+      if (Math.abs(this.y - c.y) <= this.speed && this._open(maze, g, this.vx, true)) {
+        ny = c.y;
+        this.vy = 0;
+      } else {
+        nx = c.x;
+        this.vx = 0;
+      }
+    } else if (Math.abs(this.x - c.x) <= this.speed && this._open(maze, g, this.vy, false)) {
+      nx = c.x;
       this.vx = 0;
-    } else if (crossedX && !keepX) {
-      this.x = this._edge(g.x, this.vx);
     } else {
-      this.x = nx;
+      ny = c.y;
+      this.vy = 0;
     }
   }
 
-  if (this.vy) {
-    if (crossedY && !canY) {
-      this.y = this._edge(g.y, this.vy);
-      this.vy = 0;
-    } else if (crossedY && !keepY) {
-      this.y = this._edge(g.y, this.vy);
-    } else {
-      this.y = ny;
-    }
-  }
+  this.x = nx;
+  this.y = ny;
 };
 
 Actor.prototype.draw = function (ctx) {
