@@ -6,12 +6,12 @@ Full-window canvas. Logical cells stay 20px. Grid size fills the window from 5×
 
 Maze background color sits under the wall sprites. Default is `#000000`. Change it with `setMazeBg("#1a2030")`.
 
-Each cell is `[up, right, down, left]`. `Maze.cells[y][x]` with `[0][0]` at the upper left. Opening a side also opens the opposite side on the neighbor. Wall tiles `images/wall_{type}_{mask}.png` are drawn last. Mask bits: up=1, right=2, down=4, left=8. Wall types live in `WALL_TYPES` (`[1, 2]`). `W` cycles the active set.
+Each cell is `[up, right, down, left]`. `Maze.cells[y][x]` with `[0][0]` at the upper left. Opening a side also opens the opposite side on the neighbor. Wall tiles `images/wall_{type}_{mask}.png` are drawn last. Mask bits: up=1, right=2, down=4, left=8. Wall types live in `WALL_TYPES` (`[1, 2, 3]`). `W` cycles the active set.
 
 HTML overlay for start, pause, and score. Generation still draws on the canvas.
 
-Movement is Pac-Man style: continuous along corridor centerlines, no sidestepping inside a passage. Turns happen at cell centers when that opening exists. Reverse is allowed immediately.
+Movement uses the maze graph as the hit test, not boxes. Actor takes input (`setInput`), steps per axis, and if that step would enter a new cell it asks `maze.canExit`. Closed: kill that axis and snap that axis to the current cell center. Open: keep the fluid x/y. Game feeds the player. Enemy picks a seek heading and uses the same Actor API.
 
-Four red diamonds spawn in the corners and keep going straight until a wall or a fork. They do not U-turn if another option exists.
+Four red diamonds spawn in the corners and walk the graph toward the player.
 
 Arrow keys / ASD. `W` cycles wall type. `P` or Esc pauses. `R` rebuilds. Goal is +100 and a new maze. Touch a diamond and you respawn.

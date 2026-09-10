@@ -39,7 +39,6 @@ let maze = null;
 let player = null;
 let enemies = [];
 let keys = new Set();
-let wanted = { dx: 0, dy: 0 };
 let score = 0;
 let resizeTimer = 0;
 
@@ -74,7 +73,11 @@ function toWorld() {
 }
 
 function spawnActors() {
-  player = new Actor(maze.start.y, maze.start.x, SPEED, CELL);
+  player = new Actor(maze.start.y, maze.start.x, SPEED, CELL, {
+    color: "#ffb347",
+    shape: "circle",
+    radius: RADIUS,
+  });
   const corners = [
     { y: 0, x: 0 },
     { y: 0, x: maze.cols - 1 },
@@ -82,9 +85,7 @@ function spawnActors() {
     { y: maze.rows - 1, x: maze.cols - 1 },
   ];
   enemies = corners.map(function (c) {
-    const e = new Actor(c.y, c.x, ENEMY_SPEED, CELL);
-    chooseEnemyDir(e, maze, c.y, c.x);
-    return e;
+    return new Enemy(c.y, c.x, ENEMY_SPEED, CELL);
   });
 }
 
@@ -92,7 +93,11 @@ function beginGenerate() {
   fitGrid();
   maze = new Maze(rows, cols);
   maze.beginGenerate();
-  player = new Actor(maze.start.y, maze.start.x, SPEED, CELL);
+  player = new Actor(maze.start.y, maze.start.x, SPEED, CELL, {
+    color: "#ffb347",
+    shape: "circle",
+    radius: RADIUS,
+  });
   enemies = [];
   state = STATES.MAKE;
   setOverlay();
@@ -105,19 +110,19 @@ function setOverlay() {
   elScore.textContent = String(score);
 }
 
-function readWanted() {
+function readInput() {
   let dx = 0;
   let dy = 0;
   if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A")) dx = -1;
   else if (keys.has("ArrowRight") || keys.has("d") || keys.has("D")) dx = 1;
   else if (keys.has("ArrowUp")) dy = -1;
   else if (keys.has("ArrowDown") || keys.has("s") || keys.has("S")) dy = 1;
-  if (dx || dy) wanted = { dx: dx, dy: dy };
+  return { dx: dx, dy: dy };
 }
 
 function hitEnemy() {
   for (let i = 0; i < enemies.length; i++) {
-    const e = enemies[i];
+    const e = enemies[i].actor;
     const dx = player.x - e.x;
     const dy = player.y - e.y;
     const lim = RADIUS + ENEMY_SIZE * 0.7;
@@ -168,21 +173,8 @@ function drawActors() {
       ctx.fillRect(h.x * CELL + 4, h.y * CELL + 4, CELL - 8, CELL - 8);
     }
   }
-  ctx.beginPath();
-  ctx.fillStyle = "#ffb347";
-  ctx.arc(player.x, player.y, RADIUS, 0, Math.PI * 2);
-  ctx.fill();
-  for (let i = 0; i < enemies.length; i++) {
-    const e = enemies[i];
-    ctx.beginPath();
-    ctx.moveTo(e.x, e.y - ENEMY_SIZE);
-    ctx.lineTo(e.x + ENEMY_SIZE, e.y);
-    ctx.lineTo(e.x, e.y + ENEMY_SIZE);
-    ctx.lineTo(e.x - ENEMY_SIZE, e.y);
-    ctx.closePath();
-    ctx.fillStyle = "#e23d3d";
-    ctx.fill();
-  }
+  if (player) player.draw(ctx);
+  for (let i = 0; i < enemies.length; i++) enemies[i].draw(ctx);
 }
 
 function drawFrame() {
@@ -218,11 +210,10 @@ function frame() {
       setOverlay();
     }
   } else if (state === STATES.PLAY) {
-    readWanted();
-    player.step(maze, function (a, m, y, x) {
-      choosePlayerDir(a, m, y, x, wanted);
-    }, wanted);
-    for (let i = 0; i < enemies.length; i++) enemies[i].step(maze, chooseEnemyDir);
+    const input = readInput();
+    player.setInput(input.dx, input.dy);
+    player.step(maze);
+    for (let i = 0; i < enemies.length; i++) enemies[i].step(maze, player);
     if (onGoal()) {
       score += 100;
       elScore.textContent = String(score);

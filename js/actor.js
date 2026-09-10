@@ -1,10 +1,14 @@
-/** Corridor-locked mover. Turns at cell centers using Cell exits. */
+/** Corridor body. Graph is the hit test. Draw is a stand-in for a Sprite. */
 
-function Actor(cellY, cellX, speed, cellSize) {
+function Actor(cellY, cellX, speed, cellSize, look) {
   this.speed = speed;
   this.cellSize = cellSize;
   this.dx = 0;
   this.dy = 0;
+  look = look || {};
+  this.color = look.color || "#ffb347";
+  this.shape = look.shape || "circle";
+  this.radius = look.radius != null ? look.radius : 7;
   this.place(cellY, cellX);
 }
 
@@ -12,6 +16,8 @@ Actor.prototype.place = function (cellY, cellX) {
   const half = this.cellSize / 2;
   this.x = cellX * this.cellSize + half;
   this.y = cellY * this.cellSize + half;
+  this.dx = 0;
+  this.dy = 0;
 };
 
 Actor.prototype.grid = function () {
@@ -26,114 +32,73 @@ Actor.prototype.centerOf = function (gy, gx) {
   return { x: gx * this.cellSize + half, y: gy * this.cellSize + half };
 };
 
-Actor.prototype.vecToDir = function (dx, dy) {
-  if (dy < 0) return DIR.UP;
-  if (dx > 0) return DIR.RIGHT;
-  if (dy > 0) return DIR.DOWN;
-  if (dx < 0) return DIR.LEFT;
+Actor.prototype.setInput = function (dx, dy) {
+  this.dx = dx || 0;
+  this.dy = dy || 0;
+};
+
+Actor.prototype._axisDir = function (delta, horiz) {
+  if (delta > 0) return horiz ? DIR.RIGHT : DIR.DOWN;
+  if (delta < 0) return horiz ? DIR.LEFT : DIR.UP;
   return -1;
 };
 
-Actor.prototype.dirToVec = function (dir) {
-  return { dx: DIR_X[dir], dy: DIR_Y[dir] };
-};
-
-function isReverseVec(a, b) {
-  return a.dx === -b.dx && a.dy === -b.dy && (a.dx !== 0 || a.dy !== 0);
-}
-
-Actor.prototype.step = function (maze, chooseDir, wanted) {
+/**
+ * Try one axis. If the step would enter another cell, that exit must be open.
+ * Closed: kill speed on that axis and snap that axis to this cell's center.
+ * Open / same cell: keep the fluid position.
+ */
+Actor.prototype._slideAxis = function (maze, axis) {
   const g = this.grid();
   const c = this.centerOf(g.y, g.x);
-  const atCenter = Math.abs(this.x - c.x) <= this.speed && Math.abs(this.y - c.y) <= this.speed;
+  const horiz = axis === "x";
+  const delta = horiz ? this.dx : this.dy;
+  if (!delta) return;
 
-  if (atCenter) {
-    this.x = c.x;
-    this.y = c.y;
-    chooseDir(this, maze, g.y, g.x);
-    const dir = this.vecToDir(this.dx, this.dy);
-    if (dir < 0 || !maze.canExit(g.y, g.x, dir)) {
-      this.dx = 0;
-      this.dy = 0;
-      return;
-    }
-  } else {
-    if (this.dx !== 0) this.y = c.y;
-    else if (this.dy !== 0) this.x = c.x;
-  }
-
-  if (wanted && (wanted.dx || wanted.dy) && isReverseVec(wanted, this)) {
-    const rev = this.vecToDir(wanted.dx, wanted.dy);
-    if (rev >= 0 && (maze.canExit(g.y, g.x, rev) || !atCenter)) {
-      this.dx = wanted.dx;
-      this.dy = wanted.dy;
-    }
-  }
-
-  const nx = this.x + this.dx * this.speed;
-  const ny = this.y + this.dy * this.speed;
-  const ngy = Math.floor(ny / this.cellSize);
+  const nx = horiz ? this.x + delta * this.speed : this.x;
+  const ny = horiz ? this.y : this.y + delta * this.speed;
   const ngx = Math.floor(nx / this.cellSize);
-  if (ngx !== g.x || ngy !== g.y) {
-    const dir = this.vecToDir(this.dx, this.dy);
+  const ngy = Math.floor(ny / this.cellSize);
+  const crossed = horiz ? ngx !== g.x : ngy !== g.y;
+
+  if (crossed) {
+    const dir = this._axisDir(delta, horiz);
     if (dir < 0 || !maze.canExit(g.y, g.x, dir)) {
-      this.x = c.x;
-      this.y = c.y;
-      this.dx = 0;
-      this.dy = 0;
+      if (horiz) {
+        this.dx = 0;
+        this.x = c.x;
+      } else {
+        this.dy = 0;
+        this.y = c.y;
+      }
       return;
     }
   }
-  this.x = nx;
-  this.y = ny;
+
+  if (horiz) this.x = nx;
+  else this.y = ny;
 };
 
-function choosePlayerDir(actor, maze, y, x, wanted) {
-  if (wanted && (wanted.dx || wanted.dy)) {
-    const d = actor.vecToDir(wanted.dx, wanted.dy);
-    if (d >= 0 && maze.canExit(y, x, d)) {
-      const v = actor.dirToVec(d);
-      actor.dx = v.dx;
-      actor.dy = v.dy;
-      return;
-    }
-  }
-  const d = actor.vecToDir(actor.dx, actor.dy);
-  if (d >= 0 && maze.canExit(y, x, d)) return;
-  actor.dx = 0;
-  actor.dy = 0;
-}
+Actor.prototype.step = function (maze) {
+  this._slideAxis(maze, "x");
+  this._slideAxis(maze, "y");
+};
 
-function chooseEnemyDir(actor, maze, y, x) {
-  const cell = maze.cell(y, x);
-  const opts = cell.openings();
-  if (!opts.length) {
-    actor.dx = 0;
-    actor.dy = 0;
+Actor.prototype.draw = function (ctx) {
+  // later: this.sprite.x = this.x; this.sprite.y = this.y; this.sprite.draw(ctx);
+  ctx.fillStyle = this.color;
+  if (this.shape === "diamond") {
+    const s = this.radius;
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y - s);
+    ctx.lineTo(this.x + s, this.y);
+    ctx.lineTo(this.x, this.y + s);
+    ctx.lineTo(this.x - s, this.y);
+    ctx.closePath();
+    ctx.fill();
     return;
   }
-  const cur = actor.vecToDir(actor.dx, actor.dy);
-  const forward = opts.filter(function (d) { return d === cur; });
-  const sides = opts.filter(function (d) { return d !== cur && d !== DIR_OPP[cur]; });
-  const back = cur >= 0 ? opts.filter(function (d) { return d === DIR_OPP[cur]; }) : [];
-
-  let pick = -1;
-  if (sides.length + forward.length >= 2) {
-    const pool = sides.concat(forward);
-    pick = pool[Math.floor(Math.random() * pool.length)];
-  } else if (forward.length) {
-    return;
-  } else if (sides.length) {
-    pick = sides[Math.floor(Math.random() * sides.length)];
-  } else if (back.length) {
-    pick = back[0];
-  }
-  if (pick < 0) {
-    actor.dx = 0;
-    actor.dy = 0;
-    return;
-  }
-  const v = actor.dirToVec(pick);
-  actor.dx = v.dx;
-  actor.dy = v.dy;
-}
+  ctx.beginPath();
+  ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+  ctx.fill();
+};
